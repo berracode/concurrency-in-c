@@ -9,10 +9,10 @@
 #include <sys/socket.h>
 #include <arpa/inet.h>
 
-#define NUM_THREADS 2
-#define QUEUE_SIZE 3
+#define NUM_THREADS 20
+#define QUEUE_SIZE 100
 
-#define PORT 8080
+#define PORT 8079
 #define MAX_CLIENTS 100
 
 typedef struct {
@@ -35,6 +35,7 @@ typedef struct {
 
 ThreadPool *pool;
 int server_fd;
+int shared_variable = 0;
 
 void *worker_function(void *arg) {
     ThreadPool *pool = (ThreadPool *)arg;
@@ -45,7 +46,7 @@ void *worker_function(void *arg) {
         printf("pool->head [%d] == pool->tail [%d] && !pool->stop [%d]\n", pool->head , pool->tail, !pool->stop);
         while (pool->head == pool->tail && !pool->stop) {
             printf("New capacity: %d\n", pool->queue_capacity);
-            printf("hilo %lu Esperando...\n", pthread_self());
+            printf("ESPERANDO hilo %lu ...\n", pthread_self());
             pthread_cond_wait(&(pool->cond), &(pool->mutex));
             printf("DESPERTANDO hilo %lu ...\n", pthread_self());
         }
@@ -89,6 +90,8 @@ ThreadPool *threadpool_create(int num_threads) {
 // Función para agregar una tarea al pool
 void threadpool_add_task(ThreadPool *pool, void (*task_function)(void *), void *arg) {
     pthread_mutex_lock(&(pool->mutex));
+    printf("-----------------------------------Cantidad de peticiones atendidas: %d\n", shared_variable++);
+
 
     printf("pool->head [%d]\n", pool->head);
     printf("pool->tail [%d]\n", pool->tail);
@@ -148,6 +151,7 @@ void handle_connection(void *arg) {
 
     // Cerrar el socket del cliente
     close(client_socket);
+
     printf("Cliente cerrado\n");
 }
 
@@ -168,6 +172,32 @@ void sigint_handler(int sig) {
     exit(EXIT_SUCCESS);
 }
 
+typedef struct {
+    int server_fd;
+    struct sockaddr_in client_address;
+    socklen_t address_len;
+} ThreadArgs;
+
+void *accept_connections(void *arg) {
+    ThreadArgs *args = ((ThreadArgs *)arg);
+
+    int server_fd = args->server_fd;
+    struct sockaddr_in client_address = args->client_address;
+    socklen_t address_len = args->address_len;
+    int client_socket;
+    while (true) {
+        // Aceptar una conexión entrante
+        client_socket = accept(server_fd, (struct sockaddr *)&client_address, &(args->address_len));
+        if (client_socket < 0) {
+            perror("accept failed");
+            continue;
+        }
+        printf("New connection accepted, socket fd: %d\n", client_socket);
+        // Agregar la tarea de manejar la conexión al pool de hilos
+        threadpool_add_task(pool, (void (*)(void *))handle_connection, &client_socket);
+    }
+    return NULL;
+}
 
 int main() {
 
@@ -180,7 +210,8 @@ int main() {
         return EXIT_FAILURE;
     }
 
-   int client_socket;
+    ThreadArgs args;
+    int client_socket;
     struct sockaddr_in server_address, client_address;
     int address_len = sizeof(server_address);
 
@@ -202,7 +233,7 @@ int main() {
     }
 
     // Escuchar en el socket
-    if (listen(server_fd, MAX_CLIENTS) < 0) {
+    if (listen(server_fd, 4096) < 0) {
         perror("listen failed");
         exit(EXIT_FAILURE);
     }
@@ -210,10 +241,23 @@ int main() {
     printf("Server listening on port %d\n", PORT);
     // Crear el threadpool
     pool = threadpool_create(NUM_THREADS);
+    args.address_len = address_len;
+    args.server_fd = server_fd;
+    args.client_address = client_address;
+    // Crear un hilo para aceptar conexiones entrantes
+    pthread_t accept_thread;
+    if (pthread_create(&accept_thread, NULL, accept_connections, &args) != 0) {
+        perror("pthread_create for accept_connections failed");
+        exit(EXIT_FAILURE);
+    }
 
+    printf("Press Ctrl+C to stop the server\n");
+    while (1) {
+        sleep(1); // Esperar un segundo antes de verificar la señal Ctrl+C nuevamente
+    }
 
 // Aceptar conexiones entrantes y manejarlas en el pool de hilos
-    while (1) {
+   /* while (1) {
         // Aceptar una conexión entrante
         if ((client_socket = accept(server_fd, (struct sockaddr *)&client_address, (socklen_t *)&address_len)) < 0) {
             perror("accept failed");
@@ -228,7 +272,7 @@ int main() {
 
         printf("--------------------------------\n\n");
 
-    }
+    }*/
 
 
     return 0;
