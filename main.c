@@ -34,7 +34,7 @@ typedef struct {
 } ThreadPool;
 
 ThreadPool *pool;
-int server_fd, mutex_lock;
+int server_fd;
 
 void *worker_function(void *arg) {
     ThreadPool *pool = (ThreadPool *)arg;
@@ -45,8 +45,9 @@ void *worker_function(void *arg) {
         printf("pool->head [%d] == pool->tail [%d] && !pool->stop [%d]\n", pool->head , pool->tail, !pool->stop);
         while (pool->head == pool->tail && !pool->stop) {
             printf("New capacity: %d\n", pool->queue_capacity);
-            printf("Esperando...\n");
+            printf("hilo %lu Esperando...\n", pthread_self());
             pthread_cond_wait(&(pool->cond), &(pool->mutex));
+            printf("DESPERTANDO hilo %lu ...\n", pthread_self());
         }
         printf("despues del while de cond_wait\n");
         if (pool->stop) {
