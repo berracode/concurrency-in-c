@@ -34,7 +34,7 @@ typedef struct {
 } ThreadPool;
 
 ThreadPool *pool;
-int server_fd;
+int server_fd, mutex_lock;
 
 void *worker_function(void *arg) {
     ThreadPool *pool = (ThreadPool *)arg;
