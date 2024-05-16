@@ -9,7 +9,7 @@
 #include <sys/socket.h>
 #include <arpa/inet.h>
 
-#define NUM_THREADS 20
+#define NUM_THREADS 2
 #define QUEUE_SIZE 100
 
 #define PORT 8079
@@ -30,12 +30,10 @@ typedef struct {
     pthread_mutex_t mutex; // Mutex para garantizar la exclusión mutua en el acceso a la cola
     pthread_cond_t cond; // Condición para la espera de nuevas tareas
     bool stop; // Bandera para indicar si se debe detener el pool
-    int queue_capacity;
 } ThreadPool;
 
 ThreadPool *pool;
 int server_fd;
-int shared_variable = 0;
 
 void *worker_function(void *arg) {
     ThreadPool *pool = (ThreadPool *)arg;
@@ -45,7 +43,6 @@ void *worker_function(void *arg) {
         pthread_mutex_lock(&(pool->mutex));
         printf("pool->head [%d] == pool->tail [%d] && !pool->stop [%d]\n", pool->head , pool->tail, !pool->stop);
         while (pool->head == pool->tail && !pool->stop) {
-            printf("New capacity: %d\n", pool->queue_capacity);
             printf("ESPERANDO hilo %lu ...\n", pthread_self());
             pthread_cond_wait(&(pool->cond), &(pool->mutex));
             printf("DESPERTANDO hilo %lu ...\n", pthread_self());
@@ -78,7 +75,6 @@ ThreadPool *threadpool_create(int num_threads) {
     pool->head = 0;
     pool->tail = 0;
     pool->stop = false;
-    pool->queue_capacity = QUEUE_SIZE;
     pthread_mutex_init(&(pool->mutex), NULL);
     pthread_cond_init(&(pool->cond), NULL);
     for (int i = 0; i < num_threads; i++) {
@@ -90,8 +86,6 @@ ThreadPool *threadpool_create(int num_threads) {
 // Función para agregar una tarea al pool
 void threadpool_add_task(ThreadPool *pool, void (*task_function)(void *), void *arg) {
     pthread_mutex_lock(&(pool->mutex));
-    printf("-----------------------------------Cantidad de peticiones atendidas: %d\n", shared_variable++);
-
 
     printf("pool->head [%d]\n", pool->head);
     printf("pool->tail [%d]\n", pool->tail);
@@ -102,8 +96,6 @@ void threadpool_add_task(ThreadPool *pool, void (*task_function)(void *), void *
     printf("queue[%d] tiene a %p\n",pool->tail, &(pool->queue[pool->tail]));
 
     pool->tail = (pool->tail + 1) % QUEUE_SIZE;
-    pool->queue_capacity = (pool->queue_capacity - 1) % QUEUE_SIZE;
-    printf("## QUEUE CAPACITY: %d\n", pool->queue_capacity);
     printf("## TAIL %d\n", pool->tail);
 
     pthread_mutex_unlock(&(pool->mutex));
@@ -233,7 +225,7 @@ int main() {
     }
 
     // Escuchar en el socket
-    if (listen(server_fd, 4096) < 0) {
+    if (listen(server_fd, 1024) < 0) {
         perror("listen failed");
         exit(EXIT_FAILURE);
     }

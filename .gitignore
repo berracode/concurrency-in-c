@@ -1,4 +1,6 @@
 server
 main
+demo
+loop*
 .vscode/
 .vscode/settings.json
